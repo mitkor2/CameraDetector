@@ -1,0 +1,6 @@
+For the use of ONNX it should be used this command:
+
+yolo export model=yolov8m.pt format=onnx
+
+It should be used inside the folder which is the .pt model.
+The model was already exported and there is an existing .onnx model inside the 'Scripts' folder.

@@ -1,0 +1,83 @@
+RONALDO    - test1
+CAMERA     - test2 
+CAT        - test3 
+DOG        - test4 
+CAMERA     - test5 
+MESSI      - test6 
+ELON MUSK  - test7
+CAR        - test8
+KFC BUCKET - test9
+HALLWAY    - test10
+CAMERA2    - test11
+CAMERA3    - test12
+
+===================================================
+YOLO V3 - 12 Jun 2026 | 16:18
+===================================================
+RONALDO    - test1 - camera 94.3% false
+CAMERA     - test2 - camera 100.0% true
+CAT        - test3 - no_camera 94.6% true
+DOG        - test4 - no_camera 99.9% true
+CAMERA     - test5 - camera 100.0% true
+MESSI      - test6 - no_camera 100.0% true
+ELON MUSK  - test7 - no_camera 100.0% true
+CAR        - test8 - no_camera 99.7% true
+KFC BUCKET - test9 - camera 99.9% false
+HALLWAY    - test10 - no_camera 78.7% true
+CAMERA2    - test11 - camera 100.0% true
+CAMERA3    - test12 - camera 100.0% true
+8/10
+---------------------------------------------------
+TTI:         2700
+Correct:     2131
+Accuracy:    78.9%
+Precision:   83.4%
+Recall:      78.9%
+F1 Score:    78.2% 
+---------------------------------------------------
+===================================================
+ROBOFLOW V2 - 12 Jun 2026 | 16:55
+===================================================
+RONALDO    - test1 - no_camera 77.7% true
+CAMERA     - test2 - camera 99.7% true
+CAT        - test3 - no_camera 69.5% true
+DOG        - test4 - no_camera 53.5% true
+CAMERA     - test5 - camera 99.6% true
+MESSI      - test6 - no_camera 99.4% true
+ELON MUSK  - test7 - no_camera 98.8% true
+CAR        - test8 - camera 59.7% false
+KFC BUCKET - test9 - camera 51.5% false
+HALLWAY 1  - test10 - no_camera 98.4% true
+CAMERA2    - test11 - camera 99.6% true
+CAMERA3    - test12 - camera 99.6% true
+---------------------------------------------------
+TTI:         657
+Correct:     655
+Accuracy:    99.5%
+Precision:   99.8%
+Recall:      99.8%
+F1 Score:    99.8% 
+---------------------------------------------------
+===================================================
+YOLO V4 - 14 Jun 2026 | 17:27
+===================================================
+RONALDO    - test1 - no_camera 100.0% true
+CAMERA     - test2 - camera 100.0% true
+CAT        - test3 - no_camera 100.0% true
+DOG        - test4 - no_camera 100.0% true
+CAMERA     - test5 - camera 100.0% true
+MESSI      - test6 - no_camera 100.0% true
+ELON MUSK  - test7 - no_camera 100.0% true
+CAR        - test8 - no_camera 100.0% true
+KFC BUCKET - test9 - no_camera 89.0% true
+HALLWAY    - test10 - no_camera 99.5% true
+CAMERA2    - test11 - camera 99.8% true
+CAMERA3    - test12 - camera 100.0% true
+---------------------------------------------------
+TTI:         2700
+Correct:     2213
+Accuracy:    82.0%
+Precision:   84.9%
+Recall:      82.0%
+F1 Score:    81.6%
+--------------------------------------------------- 
