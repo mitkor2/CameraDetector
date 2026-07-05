@@ -546,7 +546,9 @@ async function start() {
     $('btn-stop').disabled = false;
   } catch (e) {
     console.error(e);
-    showBanner(e.message, true);
+    showBanner(e.name === 'NotAllowedError'
+      ? 'Camera access was denied. Allow camera access for this site in your browser settings, then press ▶ Start detecting.'
+      : e.message, true);
     setHud('idle', 0);
     stopCamera();
     $('btn-start').disabled = false;
@@ -632,4 +634,9 @@ if (sightings.length) {
 
 if (!window.isSecureContext) {
   showBanner('This page is not served over HTTPS — camera and GPS access will be blocked by the browser.', true);
+} else {
+  // start detecting immediately — no button press needed. The browser asks for
+  // camera/location permission on first visit; if that is denied or dismissed,
+  // the ▶ button remains as a manual retry.
+  start(); // errors are surfaced in the banner by start() itself
 }
