@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Crime Scene Camera Detector</title>
+  <meta name="description" content="AI-powered surveillance camera detector: live camera feed + YOLO classification + GPS mapping of detected cameras.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📷</text></svg>">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="brand-icon">📷</span>
+      <div>
+        <h1>Crime Scene Camera Detector</h1>
+        <p class="subtitle">Live feed &rarr; YOLO detection &rarr; GPS map</p>
+      </div>
+    </div>
+    <div class="pills">
+      <span id="pill-model" class="pill">model: loading…</span>
+      <span id="pill-gps" class="pill">GPS: off</span>
+      <span id="pill-count" class="pill">0 sightings</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card" id="camera-card">
+      <div class="video-wrap">
+        <video id="video" autoplay playsinline muted></video>
+        <div id="hud">
+          <div id="hud-label">idle</div>
+          <div id="conf-bar"><div id="conf-fill"></div></div>
+        </div>
+        <div id="flash"></div>
+      </div>
+      <div class="controls">
+        <button id="btn-start" class="btn primary">▶ Start detecting</button>
+        <button id="btn-stop" class="btn" disabled>■ Stop</button>
+        <button id="btn-manual" class="btn" title="Pin a camera you spotted yourself at the current GPS position">📌 Manual pin</button>
+        <button id="btn-settings" class="btn" title="Settings">⚙</button>
+      </div>
+      <div id="banner" class="banner hidden"></div>
+
+      <div id="settings" class="settings hidden">
+        <h3>Settings</h3>
+        <label>Detection backend
+          <select id="set-backend">
+            <option value="auto">Auto (ONNX if model file exists, else Roboflow API)</option>
+            <option value="onnx">On-device ONNX (YOLOv8-cls)</option>
+            <option value="roboflow">Roboflow hosted API</option>
+          </select>
+        </label>
+        <label>Confidence threshold <span id="set-thresh-val"></span>
+          <input type="range" id="set-thresh" min="0.5" max="0.99" step="0.01">
+        </label>
+        <label>Consecutive frames to confirm
+          <input type="number" id="set-frames" min="1" max="10" step="1">
+        </label>
+        <label>Duplicate radius (m) — detections closer than this update the existing pin
+          <input type="number" id="set-radius" min="0" max="200" step="1">
+        </label>
+        <label>Roboflow model id
+          <input type="text" id="set-rf-model" placeholder="camerav2-u58ps/2">
+        </label>
+        <label>Roboflow API key
+          <input type="text" id="set-rf-key" placeholder="your publishable API key">
+        </label>
+        <p class="hint">On-device model: place your exported classifier at
+          <code>docs/models/camera-classifier.onnx</code> (see <code>docs/models/README.md</code>).
+          Input size is auto-detected; classes are assumed to be <code>camera</code>, <code>no_camera</code>
+          (alphabetical, as trained).</p>
+      </div>
+    </section>
+
+    <section class="card" id="map-card">
+      <div id="map"></div>
+      <div class="controls">
+        <button id="btn-locate" class="btn">🎯 Center on me</button>
+        <button id="btn-export-geojson" class="btn">⬇ GeoJSON</button>
+        <button id="btn-export-csv" class="btn">⬇ CSV</button>
+        <button id="btn-clear" class="btn danger">🗑 Clear all</button>
+      </div>
+    </section>
+
+    <section class="card" id="list-card">
+      <h2>Sightings</h2>
+      <div id="sightings-list" class="sightings"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Runs fully in your browser — the camera feed never leaves the device when using the on-device ONNX backend.
+       Requires HTTPS (GitHub Pages ✔) for camera & GPS access.</p>
+  </footer>
+
+  <!-- vendored locally so the app has no CDN dependency in the field -->
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/ort/ort.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
