@@ -11,6 +11,47 @@ This project explores an AI-powered camera detection system for crime scene inve
 
 The Crime Scene Camera Detector proposes a faster computer vision workflow that identifies whether images contain civilian surveillance cameras. The goal is to reduce hours of manual searching into minutes, helping investigators preserve the critical "golden hours" after an incident.
 
+## Live Web App (GitHub Pages)
+
+The `docs/` folder contains a static web app that turns this project into a
+field tool. It runs entirely in the browser (works on laptops and mobile
+phones) and:
+
+- opens the device camera (rear camera on phones) and shows a live feed,
+- runs the camera classifier on the feed — either **on-device** with the
+  YOLOv8 model via ONNX Runtime Web, or through the project's
+  **Roboflow-hosted** model as a fallback,
+- tracks the device's GPS position with the browser Geolocation API,
+- when a surveillance camera is confirmed in the feed, drops a pin on a live
+  OpenStreetMap map at the current GPS coordinates together with a snapshot
+  of what was detected, its confidence, timestamp, and GPS accuracy,
+- de-duplicates repeat detections of the same camera (configurable radius),
+  supports manual pins, persists sightings on the device, and exports
+  everything as **GeoJSON** or **CSV** for GIS tools.
+
+### Enabling it
+
+1. Merge this branch to `main`.
+2. On GitHub: **Settings → Pages → Source: Deploy from a branch →
+   Branch: `main`, folder: `/docs`** → Save.
+3. Open `https://<your-username>.github.io/CameraDetector/` — allow camera
+   and location access when prompted (GitHub Pages is HTTPS, which both
+   permissions require).
+
+### Getting detections working
+
+The app supports two backends (switchable in ⚙ Settings):
+
+| Backend | What it needs | Privacy |
+| --- | --- | --- |
+| On-device ONNX (recommended) | Export your trained `best.pt` to ONNX and commit it as `docs/models/camera-classifier.onnx` — see [`docs/models/README.md`](docs/models/README.md). The repo currently only holds the *base ImageNet* weights, not the trained classifier. | Frames never leave the device |
+| Roboflow API | Enter the model id (`camerav2-u58ps/2`) and an API key in ⚙ Settings | Frames are uploaded to Roboflow |
+
+> ⚠️ **Security note:** a Roboflow private API key is currently hardcoded in
+> `Roboflow/main.py` and is public in this repository's history. Rotate it in
+> your Roboflow workspace settings, and use a *publishable* key for the web
+> app.
+
 ## Project Context
 
 Civilian surveillance footage can be decisive evidence, but officers first need to know where the cameras are, who owns them, and whether they cover the crime scene. This project focuses on the AI model component of that problem.
