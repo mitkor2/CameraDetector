@@ -30,7 +30,7 @@
   </header>
 
   <main>
-    <section class="card" id="camera-card">
+    <section class="card view active" id="camera-card" data-view="camera">
       <div class="video-wrap">
         <video id="video" autoplay playsinline muted></video>
         <div id="hud">
@@ -46,59 +46,71 @@
         <button id="btn-settings" class="btn" title="Settings">⚙</button>
       </div>
       <div id="banner" class="banner hidden"></div>
-
-      <div id="settings" class="settings hidden">
-        <h3>Settings</h3>
-        <label>Load YOLO model (.onnx) from this device
-          <input type="file" id="set-model-file" accept=".onnx">
-        </label>
-        <p class="hint" id="model-file-status"></p>
-        <button id="btn-model-clear" class="btn danger hidden" type="button">Remove stored model</button>
-        <label>Detection backend
-          <select id="set-backend">
-            <option value="onnx">YOLO on-device (ONNX) — recommended</option>
-            <option value="auto">Auto (YOLO if available, else Roboflow API)</option>
-            <option value="roboflow">Roboflow hosted API</option>
-          </select>
-        </label>
-        <label>Confidence threshold <span id="set-thresh-val"></span>
-          <input type="range" id="set-thresh" min="0.5" max="0.99" step="0.01">
-        </label>
-        <label>Consecutive frames to confirm
-          <input type="number" id="set-frames" min="1" max="10" step="1">
-        </label>
-        <label>Duplicate radius (m) — detections closer than this update the existing pin
-          <input type="number" id="set-radius" min="0" max="200" step="1">
-        </label>
-        <label>Roboflow model id
-          <input type="text" id="set-rf-model" placeholder="camerav2-u58ps/2">
-        </label>
-        <label>Roboflow API key
-          <input type="text" id="set-rf-key" placeholder="your publishable API key">
-        </label>
-        <p class="hint">YOLO model: pick your exported <code>best.onnx</code> with the file chooser
-          above (it is stored in the browser and survives reloads), or commit it to the repo as
-          <code>docs/models/camera-classifier.onnx</code> (see <code>docs/models/README.md</code>).
-          Input size is auto-detected; classes are assumed to be <code>camera</code>, <code>no_camera</code>
-          (alphabetical, as trained).</p>
-      </div>
     </section>
 
-    <section class="card" id="map-card">
+    <section class="card view" id="map-card" data-view="map">
       <div id="map"></div>
       <div class="controls">
         <button id="btn-locate" class="btn">🎯 Center on me</button>
+      </div>
+    </section>
+
+    <section class="card view" id="list-card" data-view="list">
+      <h2>Sightings</h2>
+      <div id="sightings-list" class="sightings"></div>
+      <div class="controls">
         <button id="btn-export-geojson" class="btn">⬇ GeoJSON</button>
         <button id="btn-export-csv" class="btn">⬇ CSV</button>
         <button id="btn-clear" class="btn danger">🗑 Clear all</button>
       </div>
     </section>
-
-    <section class="card" id="list-card">
-      <h2>Sightings</h2>
-      <div id="sightings-list" class="sightings"></div>
-    </section>
   </main>
+
+  <div id="sheet-backdrop" class="hidden"></div>
+  <div id="settings" class="sheet hidden">
+    <div class="sheet-head">
+      <h3>Settings</h3>
+      <button id="btn-settings-close" class="btn" type="button">✕</button>
+    </div>
+    <label>Load YOLO model (.onnx) from this device
+      <input type="file" id="set-model-file" accept=".onnx">
+    </label>
+    <p class="hint" id="model-file-status"></p>
+    <button id="btn-model-clear" class="btn danger hidden" type="button">Remove stored model</button>
+    <label>Detection backend
+      <select id="set-backend">
+        <option value="onnx">YOLO on-device (ONNX) — recommended</option>
+        <option value="auto">Auto (YOLO if available, else Roboflow API)</option>
+        <option value="roboflow">Roboflow hosted API</option>
+      </select>
+    </label>
+    <label>Confidence threshold <span id="set-thresh-val"></span>
+      <input type="range" id="set-thresh" min="0.5" max="0.99" step="0.01">
+    </label>
+    <label>Consecutive frames to confirm
+      <input type="number" id="set-frames" min="1" max="10" step="1">
+    </label>
+    <label>Duplicate radius (m) — detections closer than this update the existing pin
+      <input type="number" id="set-radius" min="0" max="200" step="1">
+    </label>
+    <label>Roboflow model id
+      <input type="text" id="set-rf-model" placeholder="camerav2-u58ps/2">
+    </label>
+    <label>Roboflow API key
+      <input type="text" id="set-rf-key" placeholder="your publishable API key">
+    </label>
+    <p class="hint">YOLO model: pick your exported <code>best.onnx</code> with the file chooser
+      above (it is stored in the browser and survives reloads), or commit it to the repo as
+      <code>docs/models/camera-classifier.onnx</code> (see <code>docs/models/README.md</code>).
+      Input size is auto-detected; classes are assumed to be <code>camera</code>, <code>no_camera</code>
+      (alphabetical, as trained).</p>
+  </div>
+
+  <nav id="tabbar">
+    <button data-view="camera" class="active"><span class="tab-icon">📷</span><span>Detect</span></button>
+    <button data-view="map"><span class="tab-icon">🗺️</span><span>Map</span><b id="tab-badge" class="hidden">0</b></button>
+    <button data-view="list"><span class="tab-icon">📌</span><span>Sightings</span></button>
+  </nav>
 
   <footer>
     <p>Runs fully in your browser — the camera feed never leaves the device when using the on-device ONNX backend.
