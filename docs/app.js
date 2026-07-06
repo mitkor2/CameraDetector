@@ -22,6 +22,9 @@ const DEFAULTS = {
 const ONNX_MODEL_URL = 'models/camera-classifier.onnx';
 const ONNX_INPUT_SIZES = [224, 640, 320];   // probed in this order
 const CAMERA_CLASS_INDEX = 0;               // ultralytics sorts folders: camera=0, no_camera=1
+// fallback for the base 1000-class ImageNet model shipped in the repo: it has no
+// CCTV class, so the closest it can do is recognise photo cameras
+const IMAGENET_CAMERA_INDICES = [732, 759]; // Polaroid_camera, reflex_camera
 const INFER_INTERVAL_MS = { onnx: 700, roboflow: 1600 };
 const CAPTURE_COOLDOWN_MS = 8000;
 const GPS_STALE_MS = 30000;
@@ -42,12 +45,14 @@ let ortSession = null;
 let onnxInputSize = null;
 let onnxInputName = null;
 let onnxModelSource = null;   // 'device' (loaded via file picker, kept in IndexedDB) | 'repo'
+let onnxNumClasses = null;
 let wakeLock = null;
 let activeBackend = null;     // 'onnx' | 'roboflow' | null
 let positiveStreak = 0;
 let lastCaptureAt = 0;
 let inferBusy = false;
 let inferTimer = null;
+let inferErrorShown = false;
 let centeredOnce = false;
 
 const markers = new Map();    // sighting id -> Leaflet marker
@@ -215,8 +220,16 @@ async function initBackend() {
     try {
       await initOnnx();
       activeBackend = 'onnx';
-      setPill('pill-model', 'YOLO on-device · ' + onnxInputSize + 'px · ' +
-        (onnxModelSource === 'device' ? 'loaded from device' : 'from repo'), 'ok');
+      const generic = onnxNumClasses !== 2;
+      setPill('pill-model',
+        'YOLO on-device · ' + onnxInputSize + 'px · ' +
+        (generic ? 'base model (limited)' : (onnxModelSource === 'device' ? 'loaded from device' : 'trained')),
+        generic ? 'warn' : 'ok');
+      if (generic) {
+        const note = 'Base ImageNet model loaded — it can recognise photo/handheld cameras but has no CCTV class, so surveillance cameras will mostly be missed. Load the trained best.onnx (⚙ Settings) for real detection.';
+        showBanner(note);
+        setTimeout(() => { if ($('banner').textContent === note) hideBanner(); }, 12000);
+      }
       return;
     } catch (e) {
       console.warn('ONNX backend unavailable:', e.message);
@@ -259,7 +272,8 @@ async function initOnnx() {
   for (const size of ONNX_INPUT_SIZES) {
     try {
       const dummy = new ort.Tensor('float32', new Float32Array(3 * size * size), [1, 3, size, size]);
-      await ortSession.run({ [onnxInputName]: dummy });
+      const out = await ortSession.run({ [onnxInputName]: dummy });
+      onnxNumClasses = out[ortSession.outputNames[0]].data.length;
       onnxInputSize = size;
       return;
     } catch { /* try next size */ }
@@ -303,7 +317,9 @@ async function classifyOnnx() {
   let probs = Array.from(out[ortSession.outputNames[0]].data);
   const sum = probs.reduce((a, b) => a + b, 0);
   if (probs.some(v => v < 0 || v > 1) || Math.abs(sum - 1) > 0.01) probs = softmax(probs);
-  return probs[CAMERA_CLASS_INDEX];
+  if (probs.length === 2) return probs[CAMERA_CLASS_INDEX];
+  // generic ImageNet model: use the photo-camera classes as a stand-in
+  return IMAGENET_CAMERA_INDICES.reduce((acc, i) => acc + (probs[i] || 0), 0);
 }
 
 async function classifyRoboflow() {
@@ -337,7 +353,7 @@ async function inferOnce() {
   inferBusy = true;
   try {
     const pCamera = activeBackend === 'onnx' ? await classifyOnnx() : await classifyRoboflow();
-    hideBanner();
+    if (inferErrorShown) { hideBanner(); inferErrorShown = false; }
 
     if (pCamera >= settings.threshold) {
       positiveStreak++;
@@ -355,6 +371,7 @@ async function inferOnce() {
     console.error(e);
     setHud('error', 0);
     showBanner('Detection error: ' + e.message, true);
+    inferErrorShown = true;
   } finally {
     inferBusy = false;
   }
@@ -469,9 +486,6 @@ function renderAllMarkers() {
 
 function updateCountPill() {
   setPill('pill-count', sightings.length + ' sighting' + (sightings.length === 1 ? '' : 's'), sightings.length ? 'ok' : '');
-  const badge = $('tab-badge');
-  badge.textContent = sightings.length;
-  badge.classList.toggle('hidden', !sightings.length);
 }
 
 function renderSightingsList() {
@@ -493,9 +507,9 @@ function renderSightingsList() {
     card.addEventListener('click', () => {
       const s = sightings.find(x => x.id === card.dataset.id);
       if (!s) return;
-      switchView('map');
       map.setView([s.lat, s.lon], 18);
       markers.get(s.id)?.openPopup();
+      $('map-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
   });
 }
@@ -715,17 +729,7 @@ function bindSettings() {
   });
 }
 
-// ────────────────────────── views (mobile tab bar) ──────────────────────────
-
-function switchView(name) {
-  document.querySelectorAll('main .view').forEach(v => v.classList.toggle('active', v.dataset.view === name));
-  document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
-  // Leaflet needs a size recalculation after its container becomes visible
-  if (name === 'map') setTimeout(() => map.invalidateSize(), 60);
-}
-
-document.querySelectorAll('#tabbar button').forEach(b =>
-  b.addEventListener('click', () => switchView(b.dataset.view)));
+// ────────────────────────── settings sheet ──────────────────────────
 
 function openSettings() {
   $('settings').classList.remove('hidden');
