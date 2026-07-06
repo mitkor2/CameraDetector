@@ -11,7 +11,7 @@
 // ────────────────────────── configuration ──────────────────────────
 
 const DEFAULTS = {
-  backend: 'auto',            // auto | onnx | roboflow
+  backend: 'onnx',            // onnx | auto | roboflow
   threshold: 0.75,            // min P(camera) to count a frame as positive
   confirmFrames: 2,           // consecutive positive frames before capturing
   dupRadius: 15,              // metres: closer detections update the existing pin
@@ -41,6 +41,8 @@ let lastFix = null;           // {lat, lon, acc, t}
 let ortSession = null;
 let onnxInputSize = null;
 let onnxInputName = null;
+let onnxModelSource = null;   // 'device' (loaded via file picker, kept in IndexedDB) | 'repo'
+let wakeLock = null;
 let activeBackend = null;     // 'onnx' | 'roboflow' | null
 let positiveStreak = 0;
 let lastCaptureAt = 0;
@@ -94,6 +96,46 @@ function updatePositionOnMap(fix) {
 }
 
 // ────────────────────────── persistence ──────────────────────────
+
+// IndexedDB key-value store — used to keep a YOLO .onnx model loaded from the
+// device (localStorage is too small for model files)
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('ccd', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbGet(key) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('kv').objectStore('kv').get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSet(key, value) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbDel(key) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
 
 function loadSettings() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}') }; }
@@ -173,13 +215,14 @@ async function initBackend() {
     try {
       await initOnnx();
       activeBackend = 'onnx';
-      setPill('pill-model', 'model: on-device ONNX (' + onnxInputSize + 'px)', 'ok');
+      setPill('pill-model', 'YOLO on-device · ' + onnxInputSize + 'px · ' +
+        (onnxModelSource === 'device' ? 'loaded from device' : 'from repo'), 'ok');
       return;
     } catch (e) {
       console.warn('ONNX backend unavailable:', e.message);
       if (want === 'onnx') {
-        setPill('pill-model', 'model: ONNX missing', 'err');
-        showBanner('On-device model not found. Add docs/models/camera-classifier.onnx (see docs/models/README.md) or switch the backend to Roboflow in ⚙ Settings.', true);
+        setPill('pill-model', 'YOLO model missing', 'err');
+        showBanner('The camera feed is live, but no YOLO model is loaded yet. Open ⚙ Settings → “Load YOLO model” and pick your exported best.onnx (it is stored on this device for next time), or commit it as docs/models/camera-classifier.onnx.', true);
         return;
       }
     }
@@ -190,18 +233,26 @@ async function initBackend() {
     setPill('pill-model', 'model: Roboflow API', 'warn');
   } else {
     setPill('pill-model', 'model: none', 'err');
-    showBanner('No detection backend available. Add the ONNX model file or enter a Roboflow model id + API key in ⚙ Settings.', true);
+    showBanner('The camera feed is live, but no detection model is configured. Open ⚙ Settings → “Load YOLO model” and pick your exported best.onnx. Manual 📌 pins work meanwhile.', true);
   }
 }
 
 async function initOnnx() {
   if (typeof ort === 'undefined') throw new Error('onnxruntime-web failed to load');
-  const head = await fetch(ONNX_MODEL_URL, { method: 'HEAD' });
-  if (!head.ok) throw new Error('model file not found (' + head.status + ')');
-
   ort.env.wasm.numThreads = 1; // GitHub Pages lacks COOP/COEP headers needed for threads
   ort.env.wasm.wasmPaths = new URL('vendor/ort/', document.baseURI).href;
-  ortSession = await ort.InferenceSession.create(ONNX_MODEL_URL, { executionProviders: ['wasm'] });
+
+  // a model loaded from the device (kept in IndexedDB) wins over the repo file
+  const stored = await idbGet('model').catch(() => null);
+  if (stored) {
+    ortSession = await ort.InferenceSession.create(new Uint8Array(stored), { executionProviders: ['wasm'] });
+    onnxModelSource = 'device';
+  } else {
+    const head = await fetch(ONNX_MODEL_URL, { method: 'HEAD' });
+    if (!head.ok) throw new Error('model file not found (' + head.status + ')');
+    ortSession = await ort.InferenceSession.create(ONNX_MODEL_URL, { executionProviders: ['wasm'] });
+    onnxModelSource = 'repo';
+  }
   onnxInputName = ortSession.inputNames[0];
 
   // Probe which input resolution this export uses (their training used 640, default export is 224)
@@ -535,23 +586,45 @@ async function start() {
   try {
     setHud('starting camera…', 0);
     await startCamera();
-    startGPS();
-    setHud('loading model…', 0);
-    await initBackend();
-    if (!activeBackend) throw new Error('no detection backend available (see banner)');
-    running = true;
-    positiveStreak = 0;
-    startLoop();
-    setHud('watching…', 0);
-    $('btn-stop').disabled = false;
   } catch (e) {
     console.error(e);
     showBanner(e.name === 'NotAllowedError'
       ? 'Camera access was denied. Allow camera access for this site in your browser settings, then press ▶ Start detecting.'
-      : e.message, true);
+      : 'Could not start the camera: ' + e.message, true);
     setHud('idle', 0);
     stopCamera();
     $('btn-start').disabled = false;
+    return;
+  }
+  // the feed stays live from here on, even if no detection model is available
+  running = true;
+  $('btn-stop').disabled = false;
+  startGPS();
+  acquireWakeLock();
+  await refreshBackend();
+}
+
+// keep the phone screen awake while detecting; the lock is dropped by the OS
+// whenever the tab is hidden, so re-acquire it on return
+async function acquireWakeLock() {
+  try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { /* unsupported or denied — not fatal */ }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (running && document.visibilityState === 'visible') acquireWakeLock();
+});
+
+async function refreshBackend() {
+  stopLoop();
+  setHud('loading model…', 0);
+  await initBackend(); // reports its own errors via pill + banner
+  if (!running) return;
+  if (activeBackend) {
+    positiveStreak = 0;
+    startLoop();
+    setHud('watching…', 0);
+  } else {
+    setHud('feed only — no model', 0);
   }
 }
 
@@ -559,6 +632,8 @@ function stop() {
   running = false;
   stopLoop();
   stopCamera();
+  wakeLock?.release().catch(() => {});
+  wakeLock = null;
   if (gpsWatchId !== null) { navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId = null; }
   setPill('pill-gps', 'GPS: off');
   setHud('idle', 0);
@@ -568,10 +643,45 @@ function stop() {
 
 // ────────────────────────── settings ui ──────────────────────────
 
+async function updateModelFileStatus() {
+  const stored = await idbGet('model').catch(() => null);
+  const mb = stored ? stored.byteLength / 1024 / 1024 : 0;
+  $('model-file-status').textContent = stored
+    ? 'Model on this device: ' + (mb >= 1 ? mb.toFixed(1) + ' MB' : Math.max(1, Math.round(stored.byteLength / 1024)) + ' KB') + ' ✔'
+    : 'No model stored on this device yet.';
+  $('btn-model-clear').classList.toggle('hidden', !stored);
+}
+
 function bindSettings() {
   const backend = $('set-backend'), thresh = $('set-thresh'), threshVal = $('set-thresh-val'),
         frames = $('set-frames'), radius = $('set-radius'),
-        rfModel = $('set-rf-model'), rfKey = $('set-rf-key');
+        rfModel = $('set-rf-model'), rfKey = $('set-rf-key'),
+        modelFile = $('set-model-file');
+
+  modelFile.addEventListener('change', async () => {
+    const file = modelFile.files[0];
+    if (!file) return;
+    $('model-file-status').textContent = 'Storing model…';
+    try {
+      await idbSet('model', await file.arrayBuffer());
+      settings.backend = 'onnx';
+      backend.value = 'onnx';
+      saveSettings();
+      await updateModelFileStatus();
+      if (running) await refreshBackend();
+      else showBanner('Model stored. Press ▶ Start detecting.');
+    } catch (e) {
+      $('model-file-status').textContent = 'Could not store the model: ' + e.message;
+    }
+    modelFile.value = '';
+  });
+
+  $('btn-model-clear').addEventListener('click', async () => {
+    await idbDel('model').catch(() => {});
+    await updateModelFileStatus();
+    if (running && activeBackend === 'onnx') await refreshBackend();
+  });
+  updateModelFileStatus();
 
   backend.value = settings.backend;
   thresh.value = settings.threshold;
@@ -583,7 +693,7 @@ function bindSettings() {
 
   backend.addEventListener('change', async () => {
     settings.backend = backend.value; saveSettings();
-    if (running) { setHud('reloading model…', 0); await initBackend(); startLoop(); }
+    if (running) await refreshBackend();
   });
   thresh.addEventListener('input', () => {
     settings.threshold = parseFloat(thresh.value);
@@ -592,8 +702,14 @@ function bindSettings() {
   });
   frames.addEventListener('change', () => { settings.confirmFrames = Math.max(1, parseInt(frames.value) || 2); saveSettings(); });
   radius.addEventListener('change', () => { settings.dupRadius = Math.max(0, parseFloat(radius.value) || 0); saveSettings(); });
-  rfModel.addEventListener('change', () => { settings.rfModel = rfModel.value.trim(); saveSettings(); });
-  rfKey.addEventListener('change', () => { settings.rfKey = rfKey.value.trim(); saveSettings(); });
+  rfModel.addEventListener('change', async () => {
+    settings.rfModel = rfModel.value.trim(); saveSettings();
+    if (running && activeBackend !== 'onnx') await refreshBackend();
+  });
+  rfKey.addEventListener('change', async () => {
+    settings.rfKey = rfKey.value.trim(); saveSettings();
+    if (running && activeBackend !== 'onnx') await refreshBackend();
+  });
 }
 
 // ────────────────────────── wire up ──────────────────────────
