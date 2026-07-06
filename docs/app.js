@@ -190,7 +190,7 @@ async function initBackend() {
     setPill('pill-model', 'model: Roboflow API', 'warn');
   } else {
     setPill('pill-model', 'model: none', 'err');
-    showBanner('No detection backend available. Add the ONNX model file or enter a Roboflow model id + API key in ⚙ Settings.', true);
+    showBanner('The camera feed is live, but no detection model is configured. Enter your Roboflow model id + API key in ⚙ Settings (detection starts right away), or add the ONNX model file to the repo. Manual 📌 pins work meanwhile.', true);
   }
 }
 
@@ -535,23 +535,34 @@ async function start() {
   try {
     setHud('starting camera…', 0);
     await startCamera();
-    startGPS();
-    setHud('loading model…', 0);
-    await initBackend();
-    if (!activeBackend) throw new Error('no detection backend available (see banner)');
-    running = true;
-    positiveStreak = 0;
-    startLoop();
-    setHud('watching…', 0);
-    $('btn-stop').disabled = false;
   } catch (e) {
     console.error(e);
     showBanner(e.name === 'NotAllowedError'
       ? 'Camera access was denied. Allow camera access for this site in your browser settings, then press ▶ Start detecting.'
-      : e.message, true);
+      : 'Could not start the camera: ' + e.message, true);
     setHud('idle', 0);
     stopCamera();
     $('btn-start').disabled = false;
+    return;
+  }
+  // the feed stays live from here on, even if no detection model is available
+  running = true;
+  $('btn-stop').disabled = false;
+  startGPS();
+  await refreshBackend();
+}
+
+async function refreshBackend() {
+  stopLoop();
+  setHud('loading model…', 0);
+  await initBackend(); // reports its own errors via pill + banner
+  if (!running) return;
+  if (activeBackend) {
+    positiveStreak = 0;
+    startLoop();
+    setHud('watching…', 0);
+  } else {
+    setHud('feed only — no model', 0);
   }
 }
 
@@ -583,7 +594,7 @@ function bindSettings() {
 
   backend.addEventListener('change', async () => {
     settings.backend = backend.value; saveSettings();
-    if (running) { setHud('reloading model…', 0); await initBackend(); startLoop(); }
+    if (running) await refreshBackend();
   });
   thresh.addEventListener('input', () => {
     settings.threshold = parseFloat(thresh.value);
@@ -592,8 +603,14 @@ function bindSettings() {
   });
   frames.addEventListener('change', () => { settings.confirmFrames = Math.max(1, parseInt(frames.value) || 2); saveSettings(); });
   radius.addEventListener('change', () => { settings.dupRadius = Math.max(0, parseFloat(radius.value) || 0); saveSettings(); });
-  rfModel.addEventListener('change', () => { settings.rfModel = rfModel.value.trim(); saveSettings(); });
-  rfKey.addEventListener('change', () => { settings.rfKey = rfKey.value.trim(); saveSettings(); });
+  rfModel.addEventListener('change', async () => {
+    settings.rfModel = rfModel.value.trim(); saveSettings();
+    if (running && activeBackend !== 'onnx') await refreshBackend();
+  });
+  rfKey.addEventListener('change', async () => {
+    settings.rfKey = rfKey.value.trim(); saveSettings();
+    if (running && activeBackend !== 'onnx') await refreshBackend();
+  });
 }
 
 // ────────────────────────── wire up ──────────────────────────
