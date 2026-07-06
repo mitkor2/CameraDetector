@@ -1,5 +1,14 @@
 # On-device model slot
 
+There are two ways to give the web app your trained YOLO model:
+
+1. **No-commit way (fastest):** open the app, tap **⚙ Settings → Load YOLO
+   model (.onnx)** and pick your exported `best.onnx`. The model is stored in
+   the browser (IndexedDB) and survives reloads — nothing is uploaded
+   anywhere.
+2. **Repo way (everyone gets it automatically):** commit the file at the path
+   below.
+
 The web app looks for a YOLOv8 classification model at:
 
 ```

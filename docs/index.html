@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Crime Scene Camera Detector</title>
   <meta name="description" content="AI-powered surveillance camera detector: live camera feed + YOLO classification + GPS mapping of detected cameras.">
+  <meta name="theme-color" content="#0e1116">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📷</text></svg>">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="style.css">
@@ -45,10 +49,15 @@
 
       <div id="settings" class="settings hidden">
         <h3>Settings</h3>
+        <label>Load YOLO model (.onnx) from this device
+          <input type="file" id="set-model-file" accept=".onnx">
+        </label>
+        <p class="hint" id="model-file-status"></p>
+        <button id="btn-model-clear" class="btn danger hidden" type="button">Remove stored model</button>
         <label>Detection backend
           <select id="set-backend">
-            <option value="auto">Auto (ONNX if model file exists, else Roboflow API)</option>
-            <option value="onnx">On-device ONNX (YOLOv8-cls)</option>
+            <option value="onnx">YOLO on-device (ONNX) — recommended</option>
+            <option value="auto">Auto (YOLO if available, else Roboflow API)</option>
             <option value="roboflow">Roboflow hosted API</option>
           </select>
         </label>
@@ -67,7 +76,8 @@
         <label>Roboflow API key
           <input type="text" id="set-rf-key" placeholder="your publishable API key">
         </label>
-        <p class="hint">On-device model: place your exported classifier at
+        <p class="hint">YOLO model: pick your exported <code>best.onnx</code> with the file chooser
+          above (it is stored in the browser and survives reloads), or commit it to the repo as
           <code>docs/models/camera-classifier.onnx</code> (see <code>docs/models/README.md</code>).
           Input size is auto-detected; classes are assumed to be <code>camera</code>, <code>no_camera</code>
           (alphabetical, as trained).</p>
