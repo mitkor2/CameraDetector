@@ -469,6 +469,9 @@ function renderAllMarkers() {
 
 function updateCountPill() {
   setPill('pill-count', sightings.length + ' sighting' + (sightings.length === 1 ? '' : 's'), sightings.length ? 'ok' : '');
+  const badge = $('tab-badge');
+  badge.textContent = sightings.length;
+  badge.classList.toggle('hidden', !sightings.length);
 }
 
 function renderSightingsList() {
@@ -490,9 +493,9 @@ function renderSightingsList() {
     card.addEventListener('click', () => {
       const s = sightings.find(x => x.id === card.dataset.id);
       if (!s) return;
+      switchView('map');
       map.setView([s.lat, s.lon], 18);
       markers.get(s.id)?.openPopup();
-      card.scrollIntoView({ block: 'nearest' });
     });
   });
 }
@@ -712,11 +715,35 @@ function bindSettings() {
   });
 }
 
+// ────────────────────────── views (mobile tab bar) ──────────────────────────
+
+function switchView(name) {
+  document.querySelectorAll('main .view').forEach(v => v.classList.toggle('active', v.dataset.view === name));
+  document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+  // Leaflet needs a size recalculation after its container becomes visible
+  if (name === 'map') setTimeout(() => map.invalidateSize(), 60);
+}
+
+document.querySelectorAll('#tabbar button').forEach(b =>
+  b.addEventListener('click', () => switchView(b.dataset.view)));
+
+function openSettings() {
+  $('settings').classList.remove('hidden');
+  $('sheet-backdrop').classList.remove('hidden');
+}
+
+function closeSettings() {
+  $('settings').classList.add('hidden');
+  $('sheet-backdrop').classList.add('hidden');
+}
+
 // ────────────────────────── wire up ──────────────────────────
 
 $('btn-start').addEventListener('click', start);
 $('btn-stop').addEventListener('click', stop);
-$('btn-settings').addEventListener('click', () => $('settings').classList.toggle('hidden'));
+$('btn-settings').addEventListener('click', openSettings);
+$('btn-settings-close').addEventListener('click', closeSettings);
+$('sheet-backdrop').addEventListener('click', closeSettings);
 $('btn-manual').addEventListener('click', () => {
   if (!currentFix()) { showBanner('No GPS fix yet — cannot place a manual pin.', true); return; }
   captureSighting(1, 'manual');
