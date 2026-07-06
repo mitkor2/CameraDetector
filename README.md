@@ -38,13 +38,17 @@ phones) and:
    and location access when prompted (GitHub Pages is HTTPS, which both
    permissions require).
 
-### Getting detections working
+### Detection backends
 
-The app supports two backends (switchable in ⚙ Settings):
+Detection works out of the box: the trained `camera_classifier_v4` model
+(recovered from this repo's git history and exported to ONNX at 640 px,
+12/12 on the manual test set) is committed at
+`docs/models/camera-classifier.onnx` and loads automatically — see
+[`docs/models/README.md`](docs/models/README.md).
 
 | Backend | What it needs | Privacy |
 | --- | --- | --- |
-| On-device ONNX (recommended) | Export your trained `best.pt` to ONNX and commit it as `docs/models/camera-classifier.onnx` — see [`docs/models/README.md`](docs/models/README.md). The repo currently only holds the *base ImageNet* weights, not the trained classifier. | Frames never leave the device |
+| On-device YOLO (default) | Nothing — the trained model ships with the app. A different `.onnx` can be loaded from the device via ⚙ Settings. | Frames never leave the device |
 | Roboflow API | Enter the model id (`camerav2-u58ps/2`) and an API key in ⚙ Settings | Frames are uploaded to Roboflow |
 
 > ⚠️ **Security note:** a Roboflow private API key is currently hardcoded in
