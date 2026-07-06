@@ -1,13 +1,14 @@
 {
-  "name": "Crime Scene Camera Detector",
-  "short_name": "CamDetector",
-  "description": "Live camera feed + YOLO detection + GPS mapping of surveillance cameras",
+  "name": "CamScout — Surveillance Camera Finder",
+  "short_name": "CamScout",
+  "description": "Find surveillance cameras with an on-device YOLO model and pin every sighting on a live map with GPS coordinates and a snapshot.",
   "start_url": ".",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0e1116",
   "theme_color": "#0e1116",
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ]
 }

@@ -2,15 +2,24 @@
 
 `camera-classifier.onnx` in this folder is what the web app loads by default.
 
-**The file currently committed here is the base ImageNet `yolov8m-cls` model**
-(copied from `YOLOv8_Medium/Scripts/`). It lets the app run out of the box,
-but ImageNet has no CCTV/surveillance-camera class — the app falls back to
-its photo-camera classes (`Polaroid_camera`, `reflex_camera`), shows the
-model pill as "base model (limited)", and will miss most real surveillance
-cameras. **Replace it with your trained export for real detection** (the app
-detects a 2-class model automatically and drops the "limited" mode).
+**The committed file is the real trained camera classifier** —
+`camera_classifier_v4` (`best.pt`), recovered from this repository's git
+history (it was part of the first commit as
+`YOLOv8_Medium/runs/camera_classifier_v4/weights/best.pt` and later deleted)
+and exported to ONNX at its training resolution of 640 px:
 
-There are two ways to give the web app your trained YOLO model:
+```bash
+yolo export model=best.pt format=onnx imgsz=640   # classes: {0: camera, 1: no_camera}
+```
+
+Verified against the 12 manual test images in `YOLOv8_Medium/images/` with
+the web app's exact preprocessing: **12/12 correct**, matching the results
+reported in `saves.txt` and the technical report. (A 224 px export was also
+evaluated: 11/12 — it re-introduces the KFC-bucket false positive — so the
+640 px export ships despite being ~8× slower per frame.)
+
+To swap in a newer training run, export it the same way and overwrite the
+file — two ways to give the web app a model:
 
 1. **No-commit way (fastest):** open the app, tap **⚙ Settings → Load YOLO
    model (.onnx)** and pick your exported `best.onnx`. The model is stored in
