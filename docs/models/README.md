@@ -1,5 +1,15 @@
 # On-device model slot
 
+`camera-classifier.onnx` in this folder is what the web app loads by default.
+
+**The file currently committed here is the base ImageNet `yolov8m-cls` model**
+(copied from `YOLOv8_Medium/Scripts/`). It lets the app run out of the box,
+but ImageNet has no CCTV/surveillance-camera class — the app falls back to
+its photo-camera classes (`Polaroid_camera`, `reflex_camera`), shows the
+model pill as "base model (limited)", and will miss most real surveillance
+cameras. **Replace it with your trained export for real detection** (the app
+detects a 2-class model automatically and drops the "limited" mode).
+
 There are two ways to give the web app your trained YOLO model:
 
 1. **No-commit way (fastest):** open the app, tap **⚙ Settings → Load YOLO
@@ -20,7 +30,7 @@ If the file exists, detection runs **fully on-device** in the browser via
 leaves the phone/laptop. If it is missing, the app falls back to the
 Roboflow-hosted model configured in the app's ⚙ Settings.
 
-## Why isn't the model committed?
+## Where is the trained model?
 
 The repository only contains the **base ImageNet weights**
 (`YOLOv8_Medium/Scripts/yolov8m-cls.pt` / `.onnx` — check their metadata: 1000

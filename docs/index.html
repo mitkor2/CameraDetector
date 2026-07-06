@@ -30,7 +30,7 @@
   </header>
 
   <main>
-    <section class="card view active" id="camera-card" data-view="camera">
+    <section class="card" id="camera-card">
       <div class="video-wrap">
         <video id="video" autoplay playsinline muted></video>
         <div id="hud">
@@ -48,14 +48,14 @@
       <div id="banner" class="banner hidden"></div>
     </section>
 
-    <section class="card view" id="map-card" data-view="map">
+    <section class="card" id="map-card">
       <div id="map"></div>
       <div class="controls">
         <button id="btn-locate" class="btn">🎯 Center on me</button>
       </div>
     </section>
 
-    <section class="card view" id="list-card" data-view="list">
+    <section class="card" id="list-card">
       <h2>Sightings</h2>
       <div id="sightings-list" class="sightings"></div>
       <div class="controls">
@@ -105,12 +105,6 @@
       Input size is auto-detected; classes are assumed to be <code>camera</code>, <code>no_camera</code>
       (alphabetical, as trained).</p>
   </div>
-
-  <nav id="tabbar">
-    <button data-view="camera" class="active"><span class="tab-icon">📷</span><span>Detect</span></button>
-    <button data-view="map"><span class="tab-icon">🗺️</span><span>Map</span><b id="tab-badge" class="hidden">0</b></button>
-    <button data-view="list"><span class="tab-icon">📌</span><span>Sightings</span></button>
-  </nav>
 
   <footer>
     <p>Runs fully in your browser — the camera feed never leaves the device when using the on-device ONNX backend.
