@@ -3,23 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Crime Scene Camera Detector</title>
-  <meta name="description" content="AI-powered surveillance camera detector: live camera feed + YOLO classification + GPS mapping of detected cameras.">
+  <title>CamScout — Surveillance Camera Finder</title>
+  <meta name="description" content="CamScout finds surveillance cameras with an on-device YOLO model and pins every sighting on a live map with GPS coordinates and a snapshot.">
   <meta name="theme-color" content="#0e1116">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CamScout">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📷</text></svg>">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header>
     <div class="brand">
-      <span class="brand-icon">📷</span>
+      <img class="brand-icon" src="icon.svg" alt="CamScout logo">
       <div>
-        <h1>Crime Scene Camera Detector</h1>
-        <p class="subtitle">Live feed &rarr; YOLO detection &rarr; GPS map</p>
+        <h1>CamScout</h1>
+        <p class="subtitle">Find surveillance cameras &middot; map every sighting</p>
       </div>
     </div>
     <div class="pills">
