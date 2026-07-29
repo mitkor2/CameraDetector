@@ -8,8 +8,14 @@ at `YOLOv8_Medium/runs/camera_classifier_v4/weights/best.pt`), exported to
 ONNX at its training resolution of 640 px:
 
 ```bash
-yolo export model=best.pt format=onnx imgsz=640   # classes: {0: camera, 1: no_camera}
+yolo export model=best.pt format=onnx imgsz=640 dynamic=True   # classes: {0: camera, 1: no_camera}
 ```
+
+The `dynamic=True` export accepts any input resolution, which the app uses
+for two-stage detection: every frame is screened fast at 224 px, and only
+frames that look like a camera are re-checked at the full 640 px training
+resolution before a pin is placed (screen 224 → verify 640 scores the same
+12/12 on the manual test set as pure 640).
 
 Verified against the 12 manual test images in `YOLOv8_Medium/images/` with
 the web app's exact preprocessing: **12/12 correct**, matching the results

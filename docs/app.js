@@ -13,19 +13,43 @@
 const DEFAULTS = {
   backend: 'onnx',            // onnx | auto | roboflow
   threshold: 0.75,            // min P(camera) to count a frame as positive
-  confirmFrames: 2,           // consecutive positive frames before capturing
+  confirmFrames: 1,           // consecutive fast-pass frames before the 640px verification
   dupRadius: 15,              // metres: closer detections update the existing pin
   rfModel: 'camerav2-u58ps/2',
   rfKey: '',
 };
 
 const ONNX_MODEL_URL = 'models/camera-classifier.onnx';
-const ONNX_INPUT_SIZES = [224, 640, 320];   // probed in this order
+const ONNX_INPUT_SIZES = [224, 640, 320];   // sizes probed for model compatibility
 const CAMERA_CLASS_INDEX = 0;               // ultralytics sorts folders: camera=0, no_camera=1
-// fallback for the base 1000-class ImageNet model shipped in the repo: it has no
-// CCTV class, so the closest it can do is recognise photo cameras
+// fallback for a 1000-class ImageNet model: it has no CCTV class, so the
+// closest it can do is recognise photo cameras
 const IMAGENET_CAMERA_INDICES = [732, 759]; // Polaroid_camera, reflex_camera
-const INFER_INTERVAL_MS = { onnx: 700, roboflow: 1600 };
+const INFER_INTERVAL_MS = { onnx: 250, roboflow: 1600 };
+
+// ── cross-origin isolation bootstrap ──
+// Multi-threaded WASM needs SharedArrayBuffer, which needs COOP/COEP headers.
+// GitHub Pages cannot send headers, so a service worker injects them; the page
+// reloads once after the worker takes control. If isolation still fails the
+// app simply runs single-threaded.
+(function bootstrapIsolation() {
+  if (window.crossOriginIsolated || !window.isSecureContext || !('serviceWorker' in navigator)) return;
+  const coep = navigator.userAgentData ? 'credentialless' : 'require-corp'; // Chromium supports the gentler mode
+  navigator.serviceWorker.register('coi-sw.js?coep=' + coep).then((reg) => {
+    if (reg.active && !navigator.serviceWorker.controller) return; // hard-reloaded page: SW active but not controlling
+    if (reg.active && sessionStorage.getItem('coi-reloaded') !== '1') {
+      sessionStorage.setItem('coi-reloaded', '1');
+      location.reload();
+    } else if (!reg.active) {
+      navigator.serviceWorker.ready.then(() => {
+        if (sessionStorage.getItem('coi-reloaded') !== '1') {
+          sessionStorage.setItem('coi-reloaded', '1');
+          location.reload();
+        }
+      });
+    }
+  }).catch(() => { /* no worker, no threads — still functional */ });
+})();
 const CAPTURE_COOLDOWN_MS = 8000;
 const GPS_STALE_MS = 30000;
 const SNAPSHOT_WIDTH = 480;
@@ -42,10 +66,13 @@ let stream = null;
 let gpsWatchId = null;
 let lastFix = null;           // {lat, lon, acc, t}
 let ortSession = null;
-let onnxInputSize = null;
 let onnxInputName = null;
 let onnxModelSource = null;   // 'device' (loaded via file picker, kept in IndexedDB) | 'repo'
 let onnxNumClasses = null;
+let onnxScreenSize = null;    // fast pass resolution (dynamic model: 224)
+let onnxVerifySize = null;    // confirmation resolution (dynamic model: 640)
+let onnxTwoStage = false;
+let onnxThreads = 1;
 let wakeLock = null;
 let activeBackend = null;     // 'onnx' | 'roboflow' | null
 let positiveStreak = 0;
@@ -69,6 +96,7 @@ const confFill = $('conf-fill');
 const map = L.map('map').setView([52.2215, 6.8937], 5); // Enschede, NL by default
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
+  crossOrigin: 'anonymous', // required under the COEP header the service worker injects
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 }).addTo(map);
 
@@ -221,8 +249,9 @@ async function initBackend() {
       await initOnnx();
       activeBackend = 'onnx';
       const generic = onnxNumClasses !== 2;
+      const sizeLabel = onnxTwoStage ? onnxScreenSize + '→' + onnxVerifySize + 'px' : onnxScreenSize + 'px';
       setPill('pill-model',
-        'YOLO on-device · ' + onnxInputSize + 'px · ' +
+        'YOLO on-device · ' + sizeLabel + (onnxThreads > 1 ? ' · ' + onnxThreads + ' threads' : '') + ' · ' +
         (generic ? 'base model (limited)' : (onnxModelSource === 'device' ? 'loaded from device' : 'trained')),
         generic ? 'warn' : 'ok');
       if (generic) {
@@ -252,7 +281,8 @@ async function initBackend() {
 
 async function initOnnx() {
   if (typeof ort === 'undefined') throw new Error('onnxruntime-web failed to load');
-  ort.env.wasm.numThreads = 1; // GitHub Pages lacks COOP/COEP headers needed for threads
+  onnxThreads = window.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
+  ort.env.wasm.numThreads = onnxThreads;
   ort.env.wasm.wasmPaths = new URL('vendor/ort/', document.baseURI).href;
 
   // a model loaded from the device (kept in IndexedDB) wins over the repo file
@@ -268,30 +298,46 @@ async function initOnnx() {
   }
   onnxInputName = ortSession.inputNames[0];
 
-  // Probe which input resolution this export uses (their training used 640, default export is 224)
+  // Probe which input resolutions the export accepts. The shipped model has
+  // dynamic H/W, so both 224 (fast screening) and 640 (accurate verification)
+  // work; a fixed-size export simply runs single-stage at its own size.
+  const okSizes = [];
   for (const size of ONNX_INPUT_SIZES) {
     try {
       const dummy = new ort.Tensor('float32', new Float32Array(3 * size * size), [1, 3, size, size]);
       const out = await ortSession.run({ [onnxInputName]: dummy });
       onnxNumClasses = out[ortSession.outputNames[0]].data.length;
-      onnxInputSize = size;
-      return;
-    } catch { /* try next size */ }
+      okSizes.push(size);
+    } catch { /* size unsupported */ }
   }
-  ortSession = null;
-  throw new Error('could not determine model input size');
+  if (!okSizes.length) {
+    ortSession = null;
+    throw new Error('could not determine model input size');
+  }
+  onnxScreenSize = Math.min(...okSizes);
+  onnxVerifySize = Math.max(...okSizes);
+  onnxTwoStage = onnxScreenSize !== onnxVerifySize;
 }
 
-function grabFrame(size) {
-  // centre-crop the video frame to a square canvas of the given size
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
+// reused per-cycle canvases: verify-res centre crop, screen-res copy, and a
+// full-frame snapshot captured at the same moment (so the pinned photo shows
+// exactly what the detector saw, not the view seconds later)
+const frameCanvas = document.createElement('canvas');
+const screenCanvas = document.createElement('canvas');
+const photoCanvas = document.createElement('canvas');
+
+function captureFrames(cropSize, wantScreenCopy) {
   const vw = video.videoWidth, vh = video.videoHeight;
   const side = Math.min(vw, vh);
-  ctx.drawImage(video, (vw - side) / 2, (vh - side) / 2, side, side, 0, 0, size, size);
-  return canvas;
+  frameCanvas.width = frameCanvas.height = cropSize;
+  frameCanvas.getContext('2d').drawImage(video, (vw - side) / 2, (vh - side) / 2, side, side, 0, 0, cropSize, cropSize);
+  if (wantScreenCopy) {
+    screenCanvas.width = screenCanvas.height = onnxScreenSize;
+    screenCanvas.getContext('2d').drawImage(frameCanvas, 0, 0, onnxScreenSize, onnxScreenSize);
+  }
+  photoCanvas.width = SNAPSHOT_WIDTH;
+  photoCanvas.height = Math.round(vh * (SNAPSHOT_WIDTH / vw));
+  photoCanvas.getContext('2d').drawImage(video, 0, 0, photoCanvas.width, photoCanvas.height);
 }
 
 function softmax(arr) {
@@ -301,9 +347,8 @@ function softmax(arr) {
   return ex.map(v => v / s);
 }
 
-async function classifyOnnx() {
-  const size = onnxInputSize;
-  const canvas = grabFrame(size);
+async function classifyOnnx(canvas) {
+  const size = canvas.width;
   const { data } = canvas.getContext('2d').getImageData(0, 0, size, size);
   const n = size * size;
   const input = new Float32Array(3 * n);
@@ -323,8 +368,7 @@ async function classifyOnnx() {
 }
 
 async function classifyRoboflow() {
-  const canvas = grabFrame(416);
-  const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+  const base64 = frameCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
   const url = 'https://classify.roboflow.com/' + settings.rfModel + '?api_key=' + encodeURIComponent(settings.rfKey);
   const res = await fetch(url, {
     method: 'POST',
@@ -352,7 +396,15 @@ async function inferOnce() {
   if (!running || inferBusy || video.readyState < 2 || !activeBackend) return;
   inferBusy = true;
   try {
-    const pCamera = activeBackend === 'onnx' ? await classifyOnnx() : await classifyRoboflow();
+    const isOnnx = activeBackend === 'onnx';
+    // capture all frames for this cycle at the same instant
+    captureFrames(isOnnx ? onnxVerifySize : 416, isOnnx && onnxTwoStage);
+
+    let t0 = performance.now();
+    const pCamera = isOnnx
+      ? await classifyOnnx(onnxTwoStage ? screenCanvas : frameCanvas)
+      : await classifyRoboflow();
+    window._perf = { ...window._perf, screenMs: Math.round(performance.now() - t0) };
     if (inferErrorShown) { hideBanner(); inferErrorShown = false; }
 
     if (pCamera >= settings.threshold) {
@@ -360,7 +412,21 @@ async function inferOnce() {
       setHud('CAMERA ' + Math.round(pCamera * 100) + '%', pCamera);
       const cooledDown = Date.now() - lastCaptureAt > CAPTURE_COOLDOWN_MS;
       if (positiveStreak >= settings.confirmFrames && cooledDown) {
-        captureSighting(pCamera, 'detector');
+        let confidence = pCamera;
+        if (isOnnx && onnxTwoStage) {
+          // confirm this exact frame at full resolution before pinning
+          setHud('verifying…', pCamera);
+          t0 = performance.now();
+          confidence = await classifyOnnx(frameCanvas);
+          window._perf = { ...window._perf, verifyMs: Math.round(performance.now() - t0) };
+          if (confidence < settings.threshold) {
+            positiveStreak = 0;
+            setHud('watching… ' + Math.round(confidence * 100) + '%', confidence);
+            return;
+          }
+          setHud('CAMERA ' + Math.round(confidence * 100) + '%', confidence);
+        }
+        captureSighting(confidence, 'detector', photoCanvas.toDataURL('image/jpeg', 0.7));
         positiveStreak = 0;
       }
     } else {
@@ -394,7 +460,7 @@ function currentFix() {
   return lastFix;
 }
 
-function captureSighting(confidence, source) {
+function captureSighting(confidence, source, framePhoto) {
   const fix = currentFix();
   if (!fix) {
     showBanner('📷 Camera detected but there is no GPS fix yet — pin skipped. Waiting for location…');
@@ -404,8 +470,9 @@ function captureSighting(confidence, source) {
   lastCaptureAt = Date.now();
   flash();
 
-  let photo = null;
-  if (video.readyState >= 2 && video.videoWidth > 0) {
+  // the detector passes the exact frame it confirmed; manual pins snapshot now
+  let photo = framePhoto || null;
+  if (!photo && video.readyState >= 2 && video.videoWidth > 0) {
     const snap = document.createElement('canvas');
     snap.width = SNAPSHOT_WIDTH;
     snap.height = Math.round(video.videoHeight * (SNAPSHOT_WIDTH / video.videoWidth));
